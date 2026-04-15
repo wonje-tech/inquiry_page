@@ -81,8 +81,19 @@ const app  = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db   = getFirestore(app);
 
-const RESET_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24시간
-const SETTINGS_REF      = doc(db, "settings", "chatReset");
+const SETTINGS_REF = doc(db, "settings", "chatReset");
+
+// 오늘 자정(00:00:00) 타임스탬프 반환
+function todayMidnight() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// 내일 자정 타임스탬프 반환
+function tomorrowMidnight() {
+  return todayMidnight() + 24 * 60 * 60 * 1000;
+}
 
 let selectedThreadId = null;
 let unsubMessages    = null;
@@ -113,10 +124,10 @@ async function checkAutoReset() {
     return;
   }
 
-  const lastResetAt = snap.data().lastResetAt?.toMillis() ?? Date.now();
-  const elapsed     = Date.now() - lastResetAt;
+  const lastResetAt = snap.data().lastResetAt?.toMillis() ?? 0;
 
-  if (elapsed >= RESET_INTERVAL_MS) {
+  // 오늘 자정 이전에 초기화됐으면 → 오늘 아직 초기화 안 된 것
+  if (lastResetAt < todayMidnight()) {
     // 24시간 초과 → 자동 삭제 실행
     const allSnap = await getDocs(collection(db, "chat_threads"));
     const count   = allSnap.size;
@@ -142,13 +153,12 @@ function updateResetUI(lastResetAtMs) {
   if (countdownTimer) clearInterval(countdownTimer);
 
   function render() {
-    const elapsed   = Date.now() - lastResetAtMs;
-    const remaining = RESET_INTERVAL_MS - elapsed;
-
     const lastDate = new Date(lastResetAtMs);
     document.getElementById("lastResetVal").textContent =
       lastDate.toLocaleString("ko-KR", { month:"numeric", day:"numeric",
         hour:"2-digit", minute:"2-digit" });
+
+    const remaining = tomorrowMidnight() - Date.now();
 
     if (remaining <= 0) {
       document.getElementById("nextResetVal").textContent = "다음 접속 시 초기화";
@@ -161,7 +171,7 @@ function updateResetUI(lastResetAtMs) {
     const m = Math.floor((remaining % 3600000) / 60000);
     const s = Math.floor((remaining % 60000) / 1000);
     document.getElementById("nextResetVal").textContent =
-      `${h}시간 ${m}분 ${s}초 후`;
+      `오늘 자정까지 ${h}시간 ${m}분 ${s}초`;
     document.getElementById("nextResetVal").style.color = "";
   }
 
