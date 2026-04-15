@@ -115,3 +115,7 @@ git add data/students-hashed.json
 git commit -m "명단 업데이트"
 git push
 ```
+
+
+```terminal 
+python scripts/run_hash.py 실행
