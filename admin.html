@@ -159,6 +159,7 @@ function updateResetUI(lastResetAtMs) {
 
   function render() {
     const lastDate = new Date(lastResetAtMs);
+    lastDate.setHours(0, 0, 0, 0); // 저장된 시각과 무관하게 항상 날짜만 표시
     document.getElementById("lastResetVal").textContent =
       lastDate.toLocaleString("ko-KR", { month:"numeric", day:"numeric" }) + " 자정";
 
