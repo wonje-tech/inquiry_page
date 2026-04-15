@@ -20,6 +20,15 @@
     <ul class="student-list" id="studentList">
       <li class="list-empty">질문한 학생이 없습니다</li>
     </ul>
+    <div class="sidebar-tools">
+      <div class="tools-label">관리 도구</div>
+      <button class="btn-clear-old" id="clearOldBtn">
+        🗑 24시간 지난 채팅 삭제
+      </button>
+      <button class="btn-clear-all" id="clearAllBtn">
+        ⚠️ 전체 채팅 삭제
+      </button>
+    </div>
   </aside>
 
   <!-- 메인: 채팅 패널 -->
@@ -50,7 +59,7 @@ import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/fire
 import { getAuth, onAuthStateChanged, signInAnonymously }
                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc,
-         query, orderBy, onSnapshot, serverTimestamp }
+         getDocs, query, orderBy, where, Timestamp, onSnapshot, serverTimestamp }
                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { FIREBASE_CONFIG } from "./js/config.js";
 
@@ -219,6 +228,86 @@ function esc(s) {
 
 document.getElementById("logoutBtn").addEventListener("click", () => {
   sessionStorage.clear(); location.href = "index.html";
+});
+
+// ── 스레드 + 메시지 일괄 삭제 헬퍼 ──
+async function deleteThread(threadId) {
+  const msgsSnap = await getDocs(
+    collection(db, "chat_threads", threadId, "messages")
+  );
+  const delMsgs = msgsSnap.docs.map(m => deleteDoc(m.ref));
+  await Promise.all(delMsgs);
+  await deleteDoc(doc(db, "chat_threads", threadId));
+  if (selectedThreadId === threadId) {
+    selectedThreadId = null;
+    if (unsubMessages) { unsubMessages(); unsubMessages = null; }
+    document.getElementById("chatHeader").innerHTML = `
+      <div class="chat-header-info">
+        <span class="chat-title">학생을 선택하세요</span>
+      </div>`;
+    document.getElementById("inputArea").style.display = "none";
+    document.getElementById("msgEmpty").style.display  = "block";
+    document.getElementById("messages").querySelectorAll(".msg-row").forEach(e => e.remove());
+  }
+}
+
+// ── 24시간 지난 채팅 삭제 ──
+document.getElementById("clearOldBtn").addEventListener("click", async () => {
+  const cutoff  = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
+  const oldSnap = await getDocs(
+    query(collection(db, "chat_threads"), where("lastMessageAt", "<", cutoff))
+  );
+
+  if (oldSnap.empty) {
+    alert("24시간이 지난 채팅이 없습니다.");
+    return;
+  }
+
+  const names = oldSnap.docs.map(d => `${d.data().studentName} (${d.data().studentId})`).join("\n");
+  if (!confirm(`다음 ${oldSnap.size}개의 채팅을 삭제합니다:\n\n${names}\n\n계속할까요?`)) return;
+
+  const btn = document.getElementById("clearOldBtn");
+  btn.disabled = true;
+  btn.textContent = "삭제 중…";
+
+  try {
+    await Promise.all(oldSnap.docs.map(d => deleteThread(d.id)));
+    alert(`${oldSnap.size}개 채팅이 삭제되었습니다.`);
+  } catch (e) {
+    console.error(e);
+    alert("삭제 중 오류가 발생했습니다.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🗑 24시간 지난 채팅 삭제";
+  }
+});
+
+// ── 전체 채팅 삭제 ──
+document.getElementById("clearAllBtn").addEventListener("click", async () => {
+  const allSnap = await getDocs(collection(db, "chat_threads"));
+
+  if (allSnap.empty) {
+    alert("삭제할 채팅이 없습니다.");
+    return;
+  }
+
+  if (!confirm(`모든 학생의 채팅 ${allSnap.size}개를 전부 삭제합니다.\n이 작업은 되돌릴 수 없습니다.\n\n정말 삭제할까요?`)) return;
+  if (!confirm("다시 한번 확인합니다. 전체 채팅을 삭제하시겠습니까?")) return;
+
+  const btn = document.getElementById("clearAllBtn");
+  btn.disabled = true;
+  btn.textContent = "삭제 중…";
+
+  try {
+    await Promise.all(allSnap.docs.map(d => deleteThread(d.id)));
+    alert("전체 채팅이 삭제되었습니다.");
+  } catch (e) {
+    console.error(e);
+    alert("삭제 중 오류가 발생했습니다.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "⚠️ 전체 채팅 삭제";
+  }
 });
 </script>
 </body>

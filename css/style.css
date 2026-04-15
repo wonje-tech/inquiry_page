@@ -309,6 +309,54 @@ html, body { height: 100%; }
 .admin-chat .chat-header { background: var(--primary); }
 
 
+/* 관리 도구 영역 */
+.sidebar-tools {
+  flex-shrink: 0;
+  padding: 10px 12px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.tools-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--hint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+.btn-clear-old,
+.btn-clear-all {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s, background 0.15s;
+  text-align: left;
+}
+.btn-clear-old {
+  background: #fff4e5;
+  color: #a05a00;
+  border: 1px solid #f5c07a;
+}
+.btn-clear-old:hover:not(:disabled) { background: #ffe8c0; }
+
+.btn-clear-all {
+  background: #fff0f0;
+  color: var(--danger);
+  border: 1px solid #f5a0a0;
+}
+.btn-clear-all:hover:not(:disabled) { background: #ffd6d6; }
+
+.btn-clear-old:disabled,
+.btn-clear-all:disabled { opacity: 0.5; cursor: not-allowed; }
+
+
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
