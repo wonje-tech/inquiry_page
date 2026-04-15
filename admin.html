@@ -50,6 +50,10 @@
       <div class="chat-header-info">
         <span class="chat-title">학생을 선택하세요</span>
       </div>
+      <div class="reset-badge" id="resetBadge">
+        <span class="reset-badge-label">자정 초기화</span>
+        <span class="reset-badge-time" id="resetBadgeTime">—</span>
+      </div>
     </header>
 
     <main class="messages" id="messages">
@@ -159,20 +163,32 @@ function updateResetUI(lastResetAtMs) {
         hour:"2-digit", minute:"2-digit" });
 
     const remaining = tomorrowMidnight() - Date.now();
+    const badge     = document.getElementById("resetBadge");
+    const badgeTime = document.getElementById("resetBadgeTime");
 
     if (remaining <= 0) {
       document.getElementById("nextResetVal").textContent = "다음 접속 시 초기화";
       document.getElementById("nextResetVal").style.color = "var(--danger)";
+      badgeTime.textContent = "초기화 대기 중";
+      badge.classList.add("overdue");
       clearInterval(countdownTimer);
       return;
     }
 
-    const h = Math.floor(remaining / 3600000);
-    const m = Math.floor((remaining % 3600000) / 60000);
-    const s = Math.floor((remaining % 60000) / 1000);
+    badge.classList.remove("overdue");
+
+    const h  = Math.floor(remaining / 3600000);
+    const m  = Math.floor((remaining % 3600000) / 60000);
+    const s  = Math.floor((remaining % 60000) / 1000);
+    const hh = String(h).padStart(2, "0");
+    const mm = String(m).padStart(2, "0");
+    const ss = String(s).padStart(2, "0");
+
     document.getElementById("nextResetVal").textContent =
       `오늘 자정까지 ${h}시간 ${m}분 ${s}초`;
     document.getElementById("nextResetVal").style.color = "";
+
+    badgeTime.textContent = `${hh}:${mm}:${ss}`;
   }
 
   render();
@@ -219,6 +235,10 @@ function selectThread(threadId, data) {
     <div class="chat-header-info">
       <span class="chat-title">${esc(data.studentName)}</span>
       <span class="chat-sub">${esc(data.studentId)}</span>
+    </div>
+    <div class="reset-badge" id="resetBadge">
+      <span class="reset-badge-label">자정 초기화</span>
+      <span class="reset-badge-time" id="resetBadgeTime">—</span>
     </div>`;
   document.getElementById("inputArea").style.display = "flex";
 
@@ -337,6 +357,10 @@ async function deleteThread(threadId) {
     document.getElementById("chatHeader").innerHTML = `
       <div class="chat-header-info">
         <span class="chat-title">학생을 선택하세요</span>
+      </div>
+      <div class="reset-badge" id="resetBadge">
+        <span class="reset-badge-label">자정 초기화</span>
+        <span class="reset-badge-time" id="resetBadgeTime">—</span>
       </div>`;
     document.getElementById("inputArea").style.display = "none";
     document.getElementById("msgEmpty").style.display  = "block";
