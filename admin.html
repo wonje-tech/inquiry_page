@@ -8,6 +8,9 @@
 </head>
 <body class="admin-page">
 
+<!-- 토스트 알림 -->
+<div class="toast" id="toast"></div>
+
 <div class="admin-wrap">
 
   <!-- 사이드바: 학생 목록 -->
@@ -20,32 +23,39 @@
     <ul class="student-list" id="studentList">
       <li class="list-empty">질문한 학생이 없습니다</li>
     </ul>
+
     <div class="sidebar-tools">
-      <div class="tools-label">관리 도구</div>
-      <button class="btn-clear-old" id="clearOldBtn">
-        🗑 24시간 지난 채팅 삭제
-      </button>
-      <button class="btn-clear-all" id="clearAllBtn">
-        ⚠️ 전체 채팅 삭제
-      </button>
+      <!-- 자동 초기화 상태 -->
+      <div class="tools-label">자동 초기화 현황</div>
+      <div class="reset-status">
+        <div class="reset-row">
+          <span class="reset-key">마지막 초기화</span>
+          <span class="reset-val" id="lastResetVal">불러오는 중…</span>
+        </div>
+        <div class="reset-row">
+          <span class="reset-key">다음 초기화까지</span>
+          <span class="reset-val" id="nextResetVal">—</span>
+        </div>
+      </div>
+
+      <!-- 수동 전체 삭제 -->
+      <div class="tools-label" style="margin-top:10px">수동 삭제</div>
+      <button class="btn-clear-all" id="clearAllBtn">⚠️ 전체 채팅 삭제</button>
     </div>
   </aside>
 
   <!-- 메인: 채팅 패널 -->
   <div class="admin-chat">
-    <!-- 채팅 헤더 -->
     <header class="chat-header" id="chatHeader">
       <div class="chat-header-info">
         <span class="chat-title">학생을 선택하세요</span>
       </div>
     </header>
 
-    <!-- 메시지 영역 -->
     <main class="messages" id="messages">
       <div class="msg-empty" id="msgEmpty">왼쪽에서 학생을 선택하면 대화 내용이 표시됩니다.</div>
     </main>
 
-    <!-- 입력 영역 (선택 전 숨김) -->
     <footer class="input-area" id="inputArea" style="display:none">
       <textarea id="msgInput" placeholder="답변을 입력하세요… (Shift+Enter: 줄바꿈)" rows="1" maxlength="1000"></textarea>
       <button class="btn-send" id="sendBtn" disabled>전송</button>
@@ -59,7 +69,7 @@ import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/fire
 import { getAuth, onAuthStateChanged, signInAnonymously }
                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc,
-         getDocs, query, orderBy, where, Timestamp, onSnapshot, serverTimestamp }
+         getDoc, setDoc, getDocs, query, orderBy, onSnapshot, serverTimestamp }
                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { FIREBASE_CONFIG } from "./js/config.js";
 
@@ -71,15 +81,97 @@ const app  = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db   = getFirestore(app);
 
-let selectedThreadId  = null;
-let unsubMessages     = null;
+const RESET_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24시간
+const SETTINGS_REF      = doc(db, "settings", "chatReset");
+
+let selectedThreadId = null;
+let unsubMessages    = null;
+let countdownTimer   = null;
 
 onAuthStateChanged(auth, async (fbUser) => {
   if (!fbUser) { await signInAnonymously(auth); return; }
+  await checkAutoReset();
   initAdmin();
 });
 
-// ── 학생 목록 실시간 구독 ──
+// ──────────────────────────────────────────────
+// 자동 초기화 체크 (페이지 로드 시 실행)
+// ──────────────────────────────────────────────
+async function checkAutoReset() {
+  let snap;
+  try {
+    snap = await getDoc(SETTINGS_REF);
+  } catch (e) {
+    console.error("settings 읽기 실패:", e);
+    return;
+  }
+
+  // 처음 실행이면 현재 시각으로 초기화
+  if (!snap.exists()) {
+    await setDoc(SETTINGS_REF, { lastResetAt: serverTimestamp() });
+    updateResetUI(Date.now());
+    return;
+  }
+
+  const lastResetAt = snap.data().lastResetAt?.toMillis() ?? Date.now();
+  const elapsed     = Date.now() - lastResetAt;
+
+  if (elapsed >= RESET_INTERVAL_MS) {
+    // 24시간 초과 → 자동 삭제 실행
+    const allSnap = await getDocs(collection(db, "chat_threads"));
+    const count   = allSnap.size;
+
+    if (count > 0) {
+      await Promise.all(allSnap.docs.map(d => deleteThread(d.id)));
+    }
+
+    const newResetAt = Date.now();
+    await setDoc(SETTINGS_REF, { lastResetAt: serverTimestamp() });
+    updateResetUI(newResetAt);
+
+    if (count > 0) {
+      showToast(`자동 초기화 완료: 채팅 ${count}개가 삭제되었습니다`);
+    }
+  } else {
+    updateResetUI(lastResetAt);
+  }
+}
+
+// ── 카운트다운 UI 업데이트 ──
+function updateResetUI(lastResetAtMs) {
+  if (countdownTimer) clearInterval(countdownTimer);
+
+  function render() {
+    const elapsed   = Date.now() - lastResetAtMs;
+    const remaining = RESET_INTERVAL_MS - elapsed;
+
+    const lastDate = new Date(lastResetAtMs);
+    document.getElementById("lastResetVal").textContent =
+      lastDate.toLocaleString("ko-KR", { month:"numeric", day:"numeric",
+        hour:"2-digit", minute:"2-digit" });
+
+    if (remaining <= 0) {
+      document.getElementById("nextResetVal").textContent = "다음 접속 시 초기화";
+      document.getElementById("nextResetVal").style.color = "var(--danger)";
+      clearInterval(countdownTimer);
+      return;
+    }
+
+    const h = Math.floor(remaining / 3600000);
+    const m = Math.floor((remaining % 3600000) / 60000);
+    const s = Math.floor((remaining % 60000) / 1000);
+    document.getElementById("nextResetVal").textContent =
+      `${h}시간 ${m}분 ${s}초 후`;
+    document.getElementById("nextResetVal").style.color = "";
+  }
+
+  render();
+  countdownTimer = setInterval(render, 1000);
+}
+
+// ──────────────────────────────────────────────
+// 학생 목록 실시간 구독
+// ──────────────────────────────────────────────
 function initAdmin() {
   const q = query(collection(db, "chat_threads"), orderBy("lastMessageAt", "desc"));
   onSnapshot(q, snap => renderStudentList(snap));
@@ -107,7 +199,9 @@ function renderStudentList(snap) {
   });
 }
 
-// ── 학생 스레드 선택 ──
+// ──────────────────────────────────────────────
+// 학생 스레드 선택
+// ──────────────────────────────────────────────
 function selectThread(threadId, data) {
   selectedThreadId = threadId;
 
@@ -118,12 +212,10 @@ function selectThread(threadId, data) {
     </div>`;
   document.getElementById("inputArea").style.display = "flex";
 
-  // active 표시 갱신
   document.querySelectorAll(".student-item").forEach(el => {
     el.classList.toggle("active", el.querySelector(".s-id")?.textContent === data.studentId);
   });
 
-  // 기존 구독 해제
   if (unsubMessages) unsubMessages();
 
   const q = query(
@@ -131,12 +223,12 @@ function selectThread(threadId, data) {
     orderBy("createdAt", "asc")
   );
   unsubMessages = onSnapshot(q, snap => renderMessages(snap, threadId));
-
-  // 읽음 처리
   updateDoc(doc(db, "chat_threads", threadId), { hasUnread: false });
 }
 
-// ── 메시지 렌더링 ──
+// ──────────────────────────────────────────────
+// 메시지 렌더링
+// ──────────────────────────────────────────────
 function renderMessages(snap, threadId) {
   const box   = document.getElementById("messages");
   const empty = document.getElementById("msgEmpty");
@@ -176,7 +268,6 @@ function renderMessages(snap, threadId) {
     box.appendChild(row);
   });
 
-  // 삭제 버튼 이벤트
   box.querySelectorAll(".btn-del").forEach(btn => {
     btn.addEventListener("click", async () => {
       if (!confirm("이 메시지를 삭제할까요?")) return;
@@ -187,7 +278,9 @@ function renderMessages(snap, threadId) {
   box.scrollTop = box.scrollHeight;
 }
 
-// ── 답변 전송 ──
+// ──────────────────────────────────────────────
+// 답변 전송
+// ──────────────────────────────────────────────
 const input   = document.getElementById("msgInput");
 const sendBtn = document.getElementById("sendBtn");
 
@@ -218,26 +311,16 @@ async function sendReply() {
   });
 }
 
-function autoResize(el) {
-  el.style.height = "auto";
-  el.style.height = Math.min(el.scrollHeight, 140) + "px";
-}
-function esc(s) {
-  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
-}
-
-document.getElementById("logoutBtn").addEventListener("click", () => {
-  sessionStorage.clear(); location.href = "index.html";
-});
-
-// ── 스레드 + 메시지 일괄 삭제 헬퍼 ──
+// ──────────────────────────────────────────────
+// 스레드 + 메시지 일괄 삭제 헬퍼
+// ──────────────────────────────────────────────
 async function deleteThread(threadId) {
   const msgsSnap = await getDocs(
     collection(db, "chat_threads", threadId, "messages")
   );
-  const delMsgs = msgsSnap.docs.map(m => deleteDoc(m.ref));
-  await Promise.all(delMsgs);
+  await Promise.all(msgsSnap.docs.map(m => deleteDoc(m.ref)));
   await deleteDoc(doc(db, "chat_threads", threadId));
+
   if (selectedThreadId === threadId) {
     selectedThreadId = null;
     if (unsubMessages) { unsubMessages(); unsubMessages = null; }
@@ -251,47 +334,15 @@ async function deleteThread(threadId) {
   }
 }
 
-// ── 24시간 지난 채팅 삭제 ──
-document.getElementById("clearOldBtn").addEventListener("click", async () => {
-  const cutoff  = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
-  const oldSnap = await getDocs(
-    query(collection(db, "chat_threads"), where("lastMessageAt", "<", cutoff))
-  );
-
-  if (oldSnap.empty) {
-    alert("24시간이 지난 채팅이 없습니다.");
-    return;
-  }
-
-  const names = oldSnap.docs.map(d => `${d.data().studentName} (${d.data().studentId})`).join("\n");
-  if (!confirm(`다음 ${oldSnap.size}개의 채팅을 삭제합니다:\n\n${names}\n\n계속할까요?`)) return;
-
-  const btn = document.getElementById("clearOldBtn");
-  btn.disabled = true;
-  btn.textContent = "삭제 중…";
-
-  try {
-    await Promise.all(oldSnap.docs.map(d => deleteThread(d.id)));
-    alert(`${oldSnap.size}개 채팅이 삭제되었습니다.`);
-  } catch (e) {
-    console.error(e);
-    alert("삭제 중 오류가 발생했습니다.");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "🗑 24시간 지난 채팅 삭제";
-  }
-});
-
-// ── 전체 채팅 삭제 ──
+// ──────────────────────────────────────────────
+// 수동 전체 삭제
+// ──────────────────────────────────────────────
 document.getElementById("clearAllBtn").addEventListener("click", async () => {
   const allSnap = await getDocs(collection(db, "chat_threads"));
 
-  if (allSnap.empty) {
-    alert("삭제할 채팅이 없습니다.");
-    return;
-  }
+  if (allSnap.empty) { alert("삭제할 채팅이 없습니다."); return; }
 
-  if (!confirm(`모든 학생의 채팅 ${allSnap.size}개를 전부 삭제합니다.\n이 작업은 되돌릴 수 없습니다.\n\n정말 삭제할까요?`)) return;
+  if (!confirm(`모든 학생의 채팅 ${allSnap.size}개를 전부 삭제합니다.\n이 작업은 되돌릴 수 없습니다.\n\n계속할까요?`)) return;
   if (!confirm("다시 한번 확인합니다. 전체 채팅을 삭제하시겠습니까?")) return;
 
   const btn = document.getElementById("clearAllBtn");
@@ -300,7 +351,10 @@ document.getElementById("clearAllBtn").addEventListener("click", async () => {
 
   try {
     await Promise.all(allSnap.docs.map(d => deleteThread(d.id)));
-    alert("전체 채팅이 삭제되었습니다.");
+    // 초기화 시각도 리셋
+    await setDoc(SETTINGS_REF, { lastResetAt: serverTimestamp() });
+    updateResetUI(Date.now());
+    showToast(`전체 채팅 ${allSnap.size}개가 삭제되었습니다.`);
   } catch (e) {
     console.error(e);
     alert("삭제 중 오류가 발생했습니다.");
@@ -308,6 +362,27 @@ document.getElementById("clearAllBtn").addEventListener("click", async () => {
     btn.disabled = false;
     btn.textContent = "⚠️ 전체 채팅 삭제";
   }
+});
+
+// ──────────────────────────────────────────────
+// 유틸
+// ──────────────────────────────────────────────
+function autoResize(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 140) + "px";
+}
+function esc(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+}
+function showToast(msg) {
+  const toast = document.getElementById("toast");
+  toast.textContent = msg;
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 4000);
+}
+
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  sessionStorage.clear(); location.href = "index.html";
 });
 </script>
 </body>

@@ -327,7 +327,35 @@ html, body { height: 100%; }
   letter-spacing: 0.05em;
   margin-bottom: 2px;
 }
-.btn-clear-old,
+
+/* 자동 초기화 상태 */
+.reset-status {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reset-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+.reset-key {
+  font-size: 0.72rem;
+  color: var(--hint);
+  flex-shrink: 0;
+}
+.reset-val {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+}
+
 .btn-clear-all {
   width: 100%;
   padding: 8px 12px;
@@ -338,23 +366,36 @@ html, body { height: 100%; }
   border: none;
   transition: opacity 0.15s, background 0.15s;
   text-align: left;
-}
-.btn-clear-old {
-  background: #fff4e5;
-  color: #a05a00;
-  border: 1px solid #f5c07a;
-}
-.btn-clear-old:hover:not(:disabled) { background: #ffe8c0; }
-
-.btn-clear-all {
   background: #fff0f0;
   color: var(--danger);
   border: 1px solid #f5a0a0;
 }
 .btn-clear-all:hover:not(:disabled) { background: #ffd6d6; }
-
-.btn-clear-old:disabled,
 .btn-clear-all:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 토스트 알림 */
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #1c1c1c;
+  color: #fff;
+  padding: 11px 20px;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 9999;
+  white-space: nowrap;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
 
 
 /* ===== SCROLLBAR ===== */
