@@ -1,0 +1,22 @@
+# ⚠️ 학생 원본 명단 — 절대 커밋 금지
+scripts/students-raw.csv
+scripts/students-raw.xlsx
+data/students-raw.*
+
+# Firebase
+.firebaserc
+*.local
+.firebase/
+firebase-debug*.log
+firestore-debug.log
+ui-debug.log
+
+# Node
+node_modules/
+functions/node_modules/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

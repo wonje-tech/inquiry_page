@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>관리자 대시보드</title>
+<link rel="stylesheet" href="css/style.css"/>
+</head>
+<body class="admin-page">
+
+<div class="admin-wrap">
+
+  <!-- 사이드바: 학생 목록 -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">⚙️ 관리자</span>
+      <button class="btn-logout" id="logoutBtn">로그아웃</button>
+    </div>
+    <div class="sidebar-label">질문한 학생</div>
+    <ul class="student-list" id="studentList">
+      <li class="list-empty">질문한 학생이 없습니다</li>
+    </ul>
+  </aside>
+
+  <!-- 메인: 채팅 패널 -->
+  <div class="admin-chat">
+    <!-- 채팅 헤더 -->
+    <header class="chat-header" id="chatHeader">
+      <div class="chat-header-info">
+        <span class="chat-title">학생을 선택하세요</span>
+      </div>
+    </header>
+
+    <!-- 메시지 영역 -->
+    <main class="messages" id="messages">
+      <div class="msg-empty" id="msgEmpty">왼쪽에서 학생을 선택하면 대화 내용이 표시됩니다.</div>
+    </main>
+
+    <!-- 입력 영역 (선택 전 숨김) -->
+    <footer class="input-area" id="inputArea" style="display:none">
+      <textarea id="msgInput" placeholder="답변을 입력하세요… (Shift+Enter: 줄바꿈)" rows="1" maxlength="1000"></textarea>
+      <button class="btn-send" id="sendBtn" disabled>전송</button>
+    </footer>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInAnonymously }
+                           from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc,
+         query, orderBy, onSnapshot, serverTimestamp }
+                           from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { FIREBASE_CONFIG } from "./js/config.js";
+
+// ── 관리자 인증 확인 ──
+const user = JSON.parse(sessionStorage.getItem("user") || "null");
+if (!user || !user.isAdmin) { location.href = "index.html"; }
+
+const app  = initializeApp(FIREBASE_CONFIG);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+let selectedThreadId  = null;
+let unsubMessages     = null;
+
+onAuthStateChanged(auth, async (fbUser) => {
+  if (!fbUser) { await signInAnonymously(auth); return; }
+  initAdmin();
+});
+
+// ── 학생 목록 실시간 구독 ──
+function initAdmin() {
+  const q = query(collection(db, "chat_threads"), orderBy("lastMessageAt", "desc"));
+  onSnapshot(q, snap => renderStudentList(snap));
+}
+
+function renderStudentList(snap) {
+  const list = document.getElementById("studentList");
+  list.innerHTML = "";
+
+  if (snap.empty) {
+    list.innerHTML = '<li class="list-empty">질문한 학생이 없습니다</li>';
+    return;
+  }
+
+  snap.forEach(docSnap => {
+    const d  = docSnap.data();
+    const li = document.createElement("li");
+    li.className = `student-item${docSnap.id === selectedThreadId ? " active" : ""}${d.hasUnread ? " unread" : ""}`;
+    li.innerHTML = `
+      <span class="s-name">${esc(d.studentName)}</span>
+      <span class="s-id">${esc(d.studentId)}</span>
+      <span class="s-last">${esc(d.lastMessage || "")}</span>`;
+    li.addEventListener("click", () => selectThread(docSnap.id, d));
+    list.appendChild(li);
+  });
+}
+
+// ── 학생 스레드 선택 ──
+function selectThread(threadId, data) {
+  selectedThreadId = threadId;
+
+  document.getElementById("chatHeader").innerHTML = `
+    <div class="chat-header-info">
+      <span class="chat-title">${esc(data.studentName)}</span>
+      <span class="chat-sub">${esc(data.studentId)}</span>
+    </div>`;
+  document.getElementById("inputArea").style.display = "flex";
+
+  // active 표시 갱신
+  document.querySelectorAll(".student-item").forEach(el => {
+    el.classList.toggle("active", el.querySelector(".s-id")?.textContent === data.studentId);
+  });
+
+  // 기존 구독 해제
+  if (unsubMessages) unsubMessages();
+
+  const q = query(
+    collection(db, "chat_threads", threadId, "messages"),
+    orderBy("createdAt", "asc")
+  );
+  unsubMessages = onSnapshot(q, snap => renderMessages(snap, threadId));
+
+  // 읽음 처리
+  updateDoc(doc(db, "chat_threads", threadId), { hasUnread: false });
+}
+
+// ── 메시지 렌더링 ──
+function renderMessages(snap, threadId) {
+  const box   = document.getElementById("messages");
+  const empty = document.getElementById("msgEmpty");
+
+  empty.style.display = snap.empty ? "block" : "none";
+  box.querySelectorAll(".msg-row").forEach(el => el.remove());
+
+  snap.forEach(msgSnap => {
+    const data = msgSnap.data();
+    const row  = document.createElement("div");
+    row.className = `msg-row ${data.role === "admin" ? "mine" : "theirs"}`;
+
+    const time = data.createdAt?.toDate
+      ? data.createdAt.toDate().toLocaleTimeString("ko-KR", { hour:"2-digit", minute:"2-digit" })
+      : "";
+
+    if (data.role === "student") {
+      row.innerHTML = `
+        <div class="msg-avatar">${esc(data.studentName?.[0] || "학")}</div>
+        <div class="msg-body">
+          <div class="bubble">${esc(data.text)}</div>
+          <div class="msg-foot">
+            <span class="msg-time">${time}</span>
+            <button class="btn-del" data-tid="${threadId}" data-mid="${msgSnap.id}">삭제</button>
+          </div>
+        </div>`;
+    } else {
+      row.innerHTML = `
+        <div class="msg-body">
+          <div class="bubble">${esc(data.text)}</div>
+          <div class="msg-foot right">
+            <button class="btn-del" data-tid="${threadId}" data-mid="${msgSnap.id}">삭제</button>
+            <span class="msg-time">${time}</span>
+          </div>
+        </div>`;
+    }
+    box.appendChild(row);
+  });
+
+  // 삭제 버튼 이벤트
+  box.querySelectorAll(".btn-del").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("이 메시지를 삭제할까요?")) return;
+      await deleteDoc(doc(db, "chat_threads", btn.dataset.tid, "messages", btn.dataset.mid));
+    });
+  });
+
+  box.scrollTop = box.scrollHeight;
+}
+
+// ── 답변 전송 ──
+const input   = document.getElementById("msgInput");
+const sendBtn = document.getElementById("sendBtn");
+
+input.addEventListener("input", () => {
+  autoResize(input);
+  sendBtn.disabled = !input.value.trim();
+});
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); }
+});
+sendBtn.addEventListener("click", sendReply);
+
+async function sendReply() {
+  if (!selectedThreadId) return;
+  const text = input.value.trim();
+  if (!text) return;
+  sendBtn.disabled = true;
+  input.value = "";
+  autoResize(input);
+
+  await addDoc(collection(db, "chat_threads", selectedThreadId, "messages"), {
+    text, role: "admin", createdAt: serverTimestamp()
+  });
+  await updateDoc(doc(db, "chat_threads", selectedThreadId), {
+    lastMessage: text.substring(0, 40),
+    lastMessageAt: serverTimestamp(),
+    hasUnread: false
+  });
+}
+
+function autoResize(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 140) + "px";
+}
+function esc(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+}
+
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  sessionStorage.clear(); location.href = "index.html";
+});
+</script>
+</body>
+</html>

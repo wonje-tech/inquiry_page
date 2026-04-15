@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>학과 상담 시스템</title>
+<link rel="stylesheet" href="css/style.css"/>
+</head>
+<body class="login-page">
+
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="logo-mark"></div>
+      <h1>학과 상담 시스템</h1>
+      <p>학번과 이름을 입력하여 로그인하세요</p>
+    </div>
+
+    <form id="loginForm" autocomplete="off">
+      <div class="field">
+        <label for="studentId">학번</label>
+        <input type="text" id="studentId" placeholder="예: 20201234" maxlength="12" inputmode="numeric"/>
+      </div>
+      <div class="field">
+        <label for="studentName">이름</label>
+        <input type="text" id="studentName" placeholder="홍길동" maxlength="10"/>
+      </div>
+      <div id="loginError" class="error-msg" hidden></div>
+      <button type="submit" class="btn-login" id="loginBtn">로그인</button>
+    </form>
+
+    <p class="login-foot">학과 재학생만 이용 가능합니다</p>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp }        from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { FIREBASE_CONFIG }      from "./js/config.js";
+import { verifyStudent }        from "./js/auth.js";
+
+const app  = initializeApp(FIREBASE_CONFIG);
+const auth = getAuth(app);
+
+const form    = document.getElementById("loginForm");
+const errEl   = document.getElementById("loginError");
+const loginBtn = document.getElementById("loginBtn");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id   = document.getElementById("studentId").value.trim();
+  const name = document.getElementById("studentName").value.trim();
+
+  if (!id || !name) {
+    showError("학번과 이름을 모두 입력해주세요.");
+    return;
+  }
+
+  loginBtn.disabled    = true;
+  loginBtn.textContent = "확인 중...";
+  errEl.hidden         = true;
+
+  try {
+    const result = await verifyStudent(id, name);
+    if (!result.valid) {
+      showError("학번 또는 이름이 올바르지 않습니다.");
+      return;
+    }
+    await signInAnonymously(auth);
+    sessionStorage.setItem("user", JSON.stringify({ id, name, isAdmin: result.isAdmin }));
+    location.href = result.isAdmin ? "admin.html" : "chat.html";
+  } catch (err) {
+    console.error(err);
+    showError("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+  } finally {
+    loginBtn.disabled    = false;
+    loginBtn.textContent = "로그인";
+  }
+});
+
+function showError(msg) {
+  errEl.textContent = msg;
+  errEl.hidden      = false;
+}
+</script>
+</body>
+</html>

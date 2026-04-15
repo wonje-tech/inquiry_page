@@ -1,0 +1,15 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "createdAt", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "chat_threads",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "lastMessageAt", "order": "DESCENDING" }]
+    }
+  ],
+  "fieldOverrides": []
+}
