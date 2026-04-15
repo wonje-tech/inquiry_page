@@ -10,8 +10,8 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.uid == request.auth.uid;
 
-      // 업데이트: 인증된 사용자
-      allow update: if request.auth != null;
+      // 업데이트 / 삭제: 인증된 사용자
+      allow update, delete: if request.auth != null;
 
       match /messages/{msgId} {
         allow read:   if request.auth != null;
