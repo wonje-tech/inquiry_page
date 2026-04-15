@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>상담 채팅</title>
+<link rel="stylesheet" href="css/style.css"/>
+</head>
+<body class="chat-page">
+
+<div class="chat-wrap">
+  <!-- 헤더 -->
+  <header class="chat-header">
+    <div class="chat-header-info">
+      <span class="chat-title">학과 상담</span>
+      <span class="chat-sub" id="headerSub"></span>
+    </div>
+    <button class="btn-logout" id="logoutBtn">로그아웃</button>
+  </header>
+
+  <!-- 날짜 안내 -->
+  <div class="date-bar" id="dateBar"></div>
+
+  <!-- 메시지 영역 -->
+  <main class="messages" id="messages">
+    <div class="msg-empty" id="msgEmpty">
+      아직 대화 내역이 없습니다.<br/>궁금한 점을 질문해보세요!
+    </div>
+  </main>
+
+  <!-- 입력 영역 -->
+  <footer class="input-area">
+    <textarea id="msgInput" placeholder="질문을 입력하세요… (Shift+Enter: 줄바꿈)" rows="1" maxlength="500"></textarea>
+    <button class="btn-send" id="sendBtn" disabled>전송</button>
+  </footer>
+</div>
+
+<script type="module">
+import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInAnonymously }
+                           from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, doc, setDoc, addDoc, updateDoc,
+         query, orderBy, onSnapshot, serverTimestamp, getDoc }
+                           from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { FIREBASE_CONFIG } from "./js/config.js";
+
+// ── 인증 확인 ──
+const user = JSON.parse(sessionStorage.getItem("user") || "null");
+if (!user || user.isAdmin) { location.href = "index.html"; }
+
+const app  = initializeApp(FIREBASE_CONFIG);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+document.getElementById("headerSub").textContent  = `${user.name} (${user.id})`;
+document.getElementById("dateBar").textContent =
+  new Date().toLocaleDateString("ko-KR", { year:"numeric", month:"long", day:"numeric", weekday:"short" })
+  + " · 대화 내역은 매일 자정에 초기화됩니다";
+
+// ── Firebase 로그인 후 채팅 시작 ──
+onAuthStateChanged(auth, async (fbUser) => {
+  if (!fbUser) { await signInAnonymously(auth); return; }
+  initChat(fbUser.uid);
+});
+
+function initChat(uid) {
+  const threadRef = doc(db, "chat_threads", user.id);
+
+  // 스레드 없으면 생성
+  getDoc(threadRef).then(snap => {
+    if (!snap.exists()) {
+      setDoc(threadRef, {
+        studentId: user.id, studentName: user.name,
+        uid, lastMessage: "", lastMessageAt: serverTimestamp(), hasUnread: false
+      });
+    }
+  });
+
+  // 메시지 실시간 구독
+  const q = query(collection(db, "chat_threads", user.id, "messages"), orderBy("createdAt", "asc"));
+  onSnapshot(q, snap => renderMessages(snap));
+
+  // 전송
+  const input   = document.getElementById("msgInput");
+  const sendBtn = document.getElementById("sendBtn");
+
+  input.addEventListener("input", () => {
+    autoResize(input);
+    sendBtn.disabled = !input.value.trim();
+  });
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  sendBtn.addEventListener("click", sendMessage);
+
+  async function sendMessage() {
+    const text = input.value.trim();
+    if (!text) return;
+    sendBtn.disabled = true;
+    input.value = "";
+    autoResize(input);
+
+    await addDoc(collection(db, "chat_threads", user.id, "messages"), {
+      text, role: "student", createdAt: serverTimestamp(), uid
+    });
+    await updateDoc(threadRef, {
+      lastMessage: text.substring(0, 40),
+      lastMessageAt: serverTimestamp(),
+      hasUnread: true
+    });
+  }
+}
+
+// ── 메시지 렌더링 ──
+function renderMessages(snap) {
+  const box   = document.getElementById("messages");
+  const empty = document.getElementById("msgEmpty");
+
+  empty.style.display = snap.empty ? "block" : "none";
+
+  // 기존 메시지 버블만 제거 (empty 제외)
+  box.querySelectorAll(".msg-row").forEach(el => el.remove());
+
+  snap.forEach(d => {
+    const data = d.data();
+    const row  = document.createElement("div");
+    row.className = `msg-row ${data.role === "student" ? "mine" : "theirs"}`;
+
+    const time = data.createdAt?.toDate
+      ? data.createdAt.toDate().toLocaleTimeString("ko-KR", { hour:"2-digit", minute:"2-digit" })
+      : "";
+
+    if (data.role === "admin") {
+      row.innerHTML = `
+        <div class="msg-avatar">관</div>
+        <div class="msg-body">
+          <span class="msg-name">관리자</span>
+          <div class="bubble">${esc(data.text)}</div>
+          <span class="msg-time">${time}</span>
+        </div>`;
+    } else {
+      row.innerHTML = `
+        <div class="msg-body">
+          <div class="bubble">${esc(data.text)}</div>
+          <span class="msg-time">${time}</span>
+        </div>`;
+    }
+    box.appendChild(row);
+  });
+
+  box.scrollTop = box.scrollHeight;
+}
+
+function autoResize(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+}
+function esc(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+}
+
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  sessionStorage.clear(); location.href = "index.html";
+});
+</script>
+</body>
+</html>
