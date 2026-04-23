@@ -1,49 +1,10 @@
 // ============================================================
 //  functions/index.js
-//  Firebase Cloud Functions — 매일 자정(KST) 채팅 초기화
+//  자동 초기화 기능이 제거되었습니다.
+//  채팅 삭제는 관리자(admin.html)에서 수동으로만 가능합니다.
 // ============================================================
 
-const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
-
-initializeApp();
-const db = getFirestore();
-
-/**
- * 매일 KST 00:00 (= UTC 15:00) 채팅 초기화
- */
-exports.resetDailyChat = onSchedule(
-  { schedule: "0 15 * * *", timeZone: "UTC", region: "asia-northeast3" },
-  async () => {
-    console.log("채팅 초기화 시작...");
-
-    const threads = await db.collection("chat_threads").get();
-    if (threads.empty) { console.log("스레드 없음"); return; }
-
-    let batch    = db.batch();
-    let opCount  = 0;
-    let msgTotal = 0;
-
-    for (const thread of threads.docs) {
-      const msgs = await thread.ref.collection("messages").get();
-      for (const msg of msgs.docs) {
-        batch.delete(msg.ref);
-        msgTotal++;
-        if (++opCount >= 490) {          // Firestore 배치 한도 500
-          await batch.commit();
-          batch = db.batch(); opCount = 0;
-        }
-      }
-      batch.update(thread.ref, {
-        lastMessage: "", lastMessageAt: FieldValue.serverTimestamp(), hasUnread: false
-      });
-      if (++opCount >= 490) {
-        await batch.commit();
-        batch = db.batch(); opCount = 0;
-      }
-    }
-    if (opCount > 0) await batch.commit();
-    console.log(`완료: ${threads.size}개 스레드, ${msgTotal}개 메시지 삭제`);
-  }
-);
+// 이전에 배포된 자동 초기화 함수(resetDailyChat)가 있다면
+// Firebase Console > Functions 에서 직접 삭제하거나
+// 아래 명령으로 제거하세요:
+//   firebase functions:delete resetDailyChat --region asia-northeast3

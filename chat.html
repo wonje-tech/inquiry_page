@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <title>상담 채팅</title>
 <link rel="stylesheet" href="css/style.css"/>
 </head>
@@ -54,8 +54,7 @@ const db   = getFirestore(app);
 
 document.getElementById("headerSub").textContent  = `${user.name} (${user.id})`;
 document.getElementById("dateBar").textContent =
-  new Date().toLocaleDateString("ko-KR", { year:"numeric", month:"long", day:"numeric", weekday:"short" })
-  + " · 대화 내역은 매일 자정에 초기화됩니다";
+  new Date().toLocaleDateString("ko-KR", { year:"numeric", month:"long", day:"numeric", weekday:"short" });
 
 // ── Firebase 로그인 후 채팅 시작 ──
 onAuthStateChanged(auth, async (fbUser) => {

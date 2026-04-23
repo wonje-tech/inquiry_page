@@ -101,7 +101,9 @@ html, body { height: 100%; }
 
 /* ===== SHARED CHAT LAYOUT ===== */
 .chat-page, .admin-page {
-  height: 100vh; overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--bg);
 }
 
@@ -238,6 +240,7 @@ html, body { height: 100%; }
 /* ===== STUDENT CHAT WRAP ===== */
 .chat-wrap {
   height: 100vh;
+  height: 100dvh;
   display: flex; flex-direction: column;
   max-width: 720px; margin: 0 auto;
   box-shadow: 0 0 40px rgba(0,0,0,0.08);
@@ -441,6 +444,14 @@ html, body { height: 100%; }
 /* ===== RESPONSIVE ===== */
 @media (max-width: 600px) {
   .login-card { padding: 32px 22px; }
+
+  /* 채팅 입력창: iOS 자동확대 방지(16px 미만 시 zoom), 홈바 영역 확보 */
+  .input-area {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .input-area textarea {
+    font-size: 16px;
+  }
 
   .admin-wrap { grid-template-columns: 1fr; grid-template-rows: 220px 1fr; }
   .sidebar { border-right: none; border-bottom: 1px solid var(--border); }

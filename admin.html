@@ -25,16 +25,12 @@
     </ul>
 
     <div class="sidebar-tools">
-      <!-- 자동 초기화 상태 -->
-      <div class="tools-label">자동 초기화 현황</div>
+      <!-- 삭제 이력 -->
+      <div class="tools-label">삭제 이력</div>
       <div class="reset-status">
         <div class="reset-row">
-          <span class="reset-key">마지막 초기화</span>
-          <span class="reset-val" id="lastResetVal">불러오는 중…</span>
-        </div>
-        <div class="reset-row">
-          <span class="reset-key">다음 초기화까지</span>
-          <span class="reset-val" id="nextResetVal">—</span>
+          <span class="reset-key">마지막 삭제</span>
+          <span class="reset-val" id="lastResetVal">기록 없음</span>
         </div>
       </div>
 
@@ -49,10 +45,6 @@
     <header class="chat-header" id="chatHeader">
       <div class="chat-header-info">
         <span class="chat-title">학생을 선택하세요</span>
-      </div>
-      <div class="reset-badge" id="resetBadge">
-        <span class="reset-badge-label">자정 초기화</span>
-        <span class="reset-badge-time" id="resetBadgeTime">—</span>
       </div>
     </header>
 
@@ -87,32 +79,19 @@ const db   = getFirestore(app);
 
 const SETTINGS_REF = doc(db, "settings", "chatReset");
 
-// 오늘 자정(00:00:00) 타임스탬프 반환
-function todayMidnight() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
-
-// 내일 자정 타임스탬프 반환
-function tomorrowMidnight() {
-  return todayMidnight() + 24 * 60 * 60 * 1000;
-}
-
 let selectedThreadId = null;
 let unsubMessages    = null;
-let countdownTimer   = null;
 
 onAuthStateChanged(auth, async (fbUser) => {
   if (!fbUser) { await signInAnonymously(auth); return; }
-  await checkAutoReset();
+  await loadLastReset();
   initAdmin();
 });
 
 // ──────────────────────────────────────────────
-// 자동 초기화 체크 (페이지 로드 시 실행)
+// 마지막 삭제 시각 불러오기 (자동 삭제 없음)
 // ──────────────────────────────────────────────
-async function checkAutoReset() {
+async function loadLastReset() {
   let snap;
   try {
     snap = await getDoc(SETTINGS_REF);
@@ -121,79 +100,23 @@ async function checkAutoReset() {
     return;
   }
 
-  // 처음 실행이면 오늘 자정으로 초기화 (오늘 이미 초기화된 것으로 간주)
-  if (!snap.exists()) {
-    const midnight = todayMidnight();
-    await setDoc(SETTINGS_REF, { lastResetAt: Timestamp.fromMillis(midnight) });
-    updateResetUI(midnight);
+  if (!snap.exists() || !snap.data().lastResetAt) {
+    document.getElementById("lastResetVal").textContent = "기록 없음";
     return;
   }
 
-  const lastResetAt = snap.data().lastResetAt?.toMillis() ?? 0;
-
-  // 오늘 자정 이전에 초기화됐으면 → 오늘 아직 초기화 안 된 것
-  if (lastResetAt < todayMidnight()) {
-    // 24시간 초과 → 자동 삭제 실행
-    const allSnap = await getDocs(collection(db, "chat_threads"));
-    const count   = allSnap.size;
-
-    if (count > 0) {
-      await Promise.all(allSnap.docs.map(d => deleteThread(d.id)));
-    }
-
-    const midnight = todayMidnight();
-    await setDoc(SETTINGS_REF, { lastResetAt: Timestamp.fromMillis(midnight) });
-    updateResetUI(midnight);
-
-    if (count > 0) {
-      showToast(`자동 초기화 완료: 채팅 ${count}개가 삭제되었습니다`);
-    }
-  } else {
-    updateResetUI(lastResetAt);
-  }
+  updateResetUI(snap.data().lastResetAt.toMillis());
 }
 
-// ── 카운트다운 UI 업데이트 ──
+// ── 마지막 삭제 시각 표시 ──
 function updateResetUI(lastResetAtMs) {
-  if (countdownTimer) clearInterval(countdownTimer);
-
-  function render() {
-    const lastDate = new Date(lastResetAtMs);
-    lastDate.setHours(0, 0, 0, 0); // 저장된 시각과 무관하게 항상 날짜만 표시
-    document.getElementById("lastResetVal").textContent =
-      lastDate.toLocaleString("ko-KR", { month:"numeric", day:"numeric" }) + " 자정";
-
-    const remaining = tomorrowMidnight() - Date.now();
-    const badge     = document.getElementById("resetBadge");
-    const badgeTime = document.getElementById("resetBadgeTime");
-
-    if (remaining <= 0) {
-      document.getElementById("nextResetVal").textContent = "다음 접속 시 초기화";
-      document.getElementById("nextResetVal").style.color = "var(--danger)";
-      badgeTime.textContent = "초기화 대기 중";
-      badge.classList.add("overdue");
-      clearInterval(countdownTimer);
-      return;
-    }
-
-    badge.classList.remove("overdue");
-
-    const h  = Math.floor(remaining / 3600000);
-    const m  = Math.floor((remaining % 3600000) / 60000);
-    const s  = Math.floor((remaining % 60000) / 1000);
-    const hh = String(h).padStart(2, "0");
-    const mm = String(m).padStart(2, "0");
-    const ss = String(s).padStart(2, "0");
-
-    document.getElementById("nextResetVal").textContent =
-      `오늘 자정까지 ${h}시간 ${m}분 ${s}초`;
-    document.getElementById("nextResetVal").style.color = "";
-
-    badgeTime.textContent = `${hh}:${mm}:${ss}`;
+  if (!lastResetAtMs) {
+    document.getElementById("lastResetVal").textContent = "기록 없음";
+    return;
   }
-
-  render();
-  countdownTimer = setInterval(render, 1000);
+  const d = new Date(lastResetAtMs);
+  document.getElementById("lastResetVal").textContent =
+    d.toLocaleString("ko-KR", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" });
 }
 
 // ──────────────────────────────────────────────
@@ -236,10 +159,6 @@ function selectThread(threadId, data) {
     <div class="chat-header-info">
       <span class="chat-title">${esc(data.studentName)}</span>
       <span class="chat-sub">${esc(data.studentId)}</span>
-    </div>
-    <div class="reset-badge" id="resetBadge">
-      <span class="reset-badge-label">자정 초기화</span>
-      <span class="reset-badge-time" id="resetBadgeTime">—</span>
     </div>`;
   document.getElementById("inputArea").style.display = "flex";
 
@@ -358,10 +277,6 @@ async function deleteThread(threadId) {
     document.getElementById("chatHeader").innerHTML = `
       <div class="chat-header-info">
         <span class="chat-title">학생을 선택하세요</span>
-      </div>
-      <div class="reset-badge" id="resetBadge">
-        <span class="reset-badge-label">자정 초기화</span>
-        <span class="reset-badge-time" id="resetBadgeTime">—</span>
       </div>`;
     document.getElementById("inputArea").style.display = "none";
     document.getElementById("msgEmpty").style.display  = "block";
@@ -386,10 +301,9 @@ document.getElementById("clearAllBtn").addEventListener("click", async () => {
 
   try {
     await Promise.all(allSnap.docs.map(d => deleteThread(d.id)));
-    // 초기화 시각을 오늘 자정으로 저장
-    const midnight = todayMidnight();
-    await setDoc(SETTINGS_REF, { lastResetAt: Timestamp.fromMillis(midnight) });
-    updateResetUI(midnight);
+    const now = Date.now();
+    await setDoc(SETTINGS_REF, { lastResetAt: Timestamp.fromMillis(now) });
+    updateResetUI(now);
     showToast(`전체 채팅 ${allSnap.size}개가 삭제되었습니다.`);
   } catch (e) {
     console.error(e);
