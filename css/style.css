@@ -101,10 +101,16 @@ html, body { height: 100%; }
 
 /* ===== SHARED CHAT LAYOUT ===== */
 .chat-page, .admin-page {
+  min-height: 100vh;
+  min-height: 100dvh;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
   background: var(--bg);
+}
+.chat-page {
+  display: flex;
+  flex-direction: column;
 }
 
 /* 채팅 헤더 */
@@ -134,9 +140,12 @@ html, body { height: 100%; }
   flex-shrink: 0;
 }
 
-/* 메시지 영역 */
+/* 메시지 영역 (flex 자식은 min-height:0 없으면 푸터가 뷰포트 밖으로 밀림) */
 .messages {
-  flex: 1; overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 20px 16px;
   display: flex; flex-direction: column; gap: 14px;
   background: var(--bg);
@@ -239,9 +248,10 @@ html, body { height: 100%; }
 
 /* ===== STUDENT CHAT WRAP ===== */
 .chat-wrap {
-  height: 100vh;
-  height: 100dvh;
+  flex: 1;
+  min-height: 0;
   display: flex; flex-direction: column;
+  width: 100%;
   max-width: 720px; margin: 0 auto;
   box-shadow: 0 0 40px rgba(0,0,0,0.08);
 }
@@ -250,6 +260,7 @@ html, body { height: 100%; }
 /* ===== ADMIN LAYOUT ===== */
 .admin-wrap {
   height: 100vh;
+  height: 100dvh;
   display: grid;
   grid-template-columns: 280px 1fr;
 }
@@ -277,7 +288,7 @@ html, body { height: 100%; }
 }
 
 .student-list {
-  list-style: none; flex: 1; overflow-y: auto;
+  list-style: none; flex: 1; min-height: 0; overflow-y: auto;
 }
 .list-empty {
   padding: 16px; font-size: 0.85rem; color: var(--hint); text-align: center;
@@ -306,6 +317,7 @@ html, body { height: 100%; }
 
 /* 관리자 채팅 패널 */
 .admin-chat {
+  min-height: 0;
   display: flex; flex-direction: column;
   overflow: hidden;
 }
