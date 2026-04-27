@@ -44,10 +44,22 @@ function loadEnvFile() {
   return out;
 }
 
+function pick(k, fileEnv) {
+  const f = fileEnv[k];
+  if (f != null && String(f).length > 0) {
+    return f;
+  }
+  const p = process.env[k];
+  if (p != null && String(p).length > 0) {
+    return p;
+  }
+  return undefined;
+}
+
 function resolveEnv(fileEnv) {
   const merged = {};
   for (const k of KEYS) {
-    const v = process.env[k] ?? fileEnv[k];
+    const v = pick(k, fileEnv);
     if (v != null && String(v).length > 0) {
       merged[k] = v;
     }
