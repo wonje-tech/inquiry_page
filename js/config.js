@@ -1,12 +1,27 @@
 // ============================================================
 //  js/config.js
-//  ⚠️  Firebase Console → 프로젝트 설정 → 웹 앱에서 복사하세요
+//  실제 키는 js/firebase-config.generated.js 에만 두고 (git 제외)
+//  로컬/배포 전:  npm run build:config  (.env 는 .env.example 참고)
 // ============================================================
-export const FIREBASE_CONFIG = {
-  apiKey: "REDACTED_FIREBASE_API_KEY",
-  authDomain: "dept-consulting.firebaseapp.com",
-  projectId: "dept-consulting",
-  storageBucket: "dept-consulting.firebasestorage.app",
-  messagingSenderId: "596987696005",
-  appId: "1:596987696005:web:512af2d2606707f862eaec"
-};
+
+const generatedHref = new URL(
+  "./firebase-config.generated.js",
+  import.meta.url
+).href;
+
+let FIREBASE_CONFIG;
+try {
+  const mod = await import(generatedHref);
+  const c = mod.FIREBASE_CONFIG;
+  if (!c || !c.apiKey) {
+    throw new Error("empty FIREBASE_CONFIG");
+  }
+  FIREBASE_CONFIG = c;
+} catch (err) {
+  const hint =
+    "Firebase 설정이 없습니다. 루트에 .env 를 만든 뒤 `npm run build:config` 를 실행하세요. (.env.example 참고)";
+  console.error(hint, err);
+  throw new Error(hint);
+}
+
+export { FIREBASE_CONFIG };

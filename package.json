@@ -1,0 +1,8 @@
+{
+  "name": "inquiry-page",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:config": "node scripts/build-firebase-config.mjs"
+  }
+}

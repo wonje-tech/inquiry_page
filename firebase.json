@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "predeploy": ["npm run build:config"],
     "public": ".",
     "ignore": ["firebase.json","**/.*","**/node_modules/**","scripts/**","functions/**"],
     "rewrites": [{ "source": "**", "destination": "/index.html" }]
