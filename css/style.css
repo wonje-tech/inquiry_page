@@ -42,20 +42,42 @@ html, body { height: 100%; }
 
 .login-header { text-align: center; margin-bottom: 32px; }
 
-.logo-mark {
-  width: 52px; height: 52px;
-  background: var(--primary);
-  border-radius: 14px;
-  margin: 0 auto 18px;
-  position: relative;
+/* 한국외국어대학교 AI데이터융합학부 브랜드 표기 */
+.brand {
+  display: flex; align-items: center; justify-content: center;
+  gap: 13px;
+  margin: 0 auto 20px;
 }
-.logo-mark::after {
-  content: '';
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  width: 26px; height: 26px;
-  border: 2.5px solid rgba(255,255,255,0.8);
-  border-radius: 50%;
+.brand-emblem {
+  width: 46px; height: 46px;
+  flex: none;
+  display: block;
+}
+.brand-divider {
+  width: 1px; align-self: stretch;
+  margin: 3px 0;
+  background: var(--border2);
+  flex: none;
+}
+.brand-text { text-align: left; line-height: 1.25; }
+.brand-univ {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: var(--sub);
+}
+.brand-dept {
+  display: block;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: -0.01em;
+}
+
+@media (max-width: 380px) {
+  .brand { gap: 10px; }
+  .brand-emblem { width: 40px; height: 40px; }
+  .brand-dept { font-size: 0.95rem; }
 }
 
 .login-header h1 { font-size: 1.4rem; font-weight: 700; color: var(--primary); margin-bottom: 6px; }
