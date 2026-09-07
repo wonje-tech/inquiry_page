@@ -18,21 +18,19 @@
     <div class="login-header">
       <div class="logo-mark"></div>
       <h1>관리자 로그인</h1>
-      <p>관리자 계정으로 로그인하세요</p>
+      <p>관리자로 등록된 HUFS 계정으로 로그인하세요</p>
     </div>
 
-    <form id="adminLoginForm" autocomplete="off">
-      <div class="field">
-        <label for="adminEmail">이메일</label>
-        <input type="email" id="adminEmail" autocomplete="username" placeholder="admin@example.com"/>
-      </div>
-      <div class="field">
-        <label for="adminPw">비밀번호</label>
-        <input type="password" id="adminPw" autocomplete="current-password"/>
-      </div>
-      <div id="adminLoginError" class="error-msg" hidden></div>
-      <button type="submit" class="btn-login" id="adminLoginBtn">로그인</button>
-    </form>
+    <button type="button" class="btn-google" id="adminLoginBtn">
+      <svg viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.6 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.2C12.4 13.6 17.7 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.2 5.3-4.6 7l7.2 5.6c4.2-3.9 6.6-9.7 6.6-16.6z"/>
+        <path fill="#FBBC05" d="M10.5 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C.9 16.5 0 20.1 0 24s.9 7.5 2.6 10.8l7.9-6.2z"/>
+        <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.2-5.6c-2 1.4-4.6 2.2-8.7 2.2-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.2C6.5 42.6 14.6 48 24 48z"/>
+      </svg>
+      HUFS 계정으로 로그인
+    </button>
+    <div id="adminLoginError" class="error-msg" style="margin-top:14px" hidden></div>
 
     <p class="login-foot">학생 상담은 <a href="index.html">상담 시스템</a>에서 이용하세요</p>
   </div>
@@ -90,16 +88,18 @@
 
 <script type="module">
 import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
+import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup,
+         signInWithRedirect, getRedirectResult, signOut }
                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc,
          getDoc, setDoc, getDocs, query, orderBy, onSnapshot, serverTimestamp, Timestamp }
                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { FIREBASE_CONFIG } from "./js/config.js";
+import { HUFS_DOMAIN, isHufsEmail, describeAuthError } from "./js/hufs.js";
 
 // ============================================================
 //  관리자 인증
-//  - 이메일/비밀번호 Firebase Auth 계정으로만 로그인한다(익명 로그인 금지).
+//  - HUFS Google 계정으로만 로그인한다.
 //  - 관리자 여부는 Firestore 의 admins/{uid} 문서로 판정하며,
 //    이 문서는 클라이언트에서 만들 수 없다(보안 규칙 write: false).
 //  - 이 화면을 강제로 열더라도 모든 데이터 요청은 보안 규칙에서 다시 검증된다.
@@ -112,11 +112,13 @@ const db   = getFirestore(app);
 
 const SETTINGS_REF = doc(db, "settings", "chatReset");
 
-const loginBox  = document.getElementById("adminLogin");
-const appBox    = document.getElementById("adminApp");
-const loginForm = document.getElementById("adminLoginForm");
-const loginBtn  = document.getElementById("adminLoginBtn");
-const loginErr  = document.getElementById("adminLoginError");
+const provider = new GoogleAuthProvider();
+provider.setCustomParameters({ hd: HUFS_DOMAIN, prompt: "select_account" });
+
+const loginBox = document.getElementById("adminLogin");
+const appBox   = document.getElementById("adminApp");
+const loginBtn = document.getElementById("adminLoginBtn");
+const loginErr = document.getElementById("adminLoginError");
 
 let selectedThreadId = null;
 let unsubMessages    = null;
@@ -142,37 +144,30 @@ function showApp() {
 }
 
 function showLoginError(msg) {
+  if (!msg) return;
   loginErr.textContent = msg;
   loginErr.hidden      = false;
 }
 
 // ── 로그인 처리 ──
-loginForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const email = document.getElementById("adminEmail").value.trim();
-  const pw    = document.getElementById("adminPw").value;
+getRedirectResult(auth).catch((err) => showLoginError(describeAuthError(err)));
 
-  if (!email || !pw) { showLoginError("이메일과 비밀번호를 모두 입력해주세요."); return; }
-
-  loginBtn.disabled    = true;
-  loginBtn.textContent = "확인 중...";
-  loginErr.hidden      = true;
-
+loginBtn.addEventListener("click", async () => {
+  loginBtn.disabled = true;
+  loginErr.hidden   = true;
   try {
-    await signInWithEmailAndPassword(auth, email, pw);
+    await signInWithPopup(auth, provider);
     // 관리자 여부 확인은 아래 onAuthStateChanged 에서 이어서 처리한다.
   } catch (err) {
     console.error(err.code || err);
-    // 계정 존재 여부가 드러나지 않도록 실패 사유는 하나로 묶어 안내한다.
-    showLoginError(
-      err.code === "auth/too-many-requests"
-        ? "시도가 너무 많습니다. 잠시 후 다시 시도해주세요."
-        : "이메일 또는 비밀번호가 올바르지 않습니다."
-    );
+    if (err.code === "auth/popup-blocked") {
+      try { await signInWithRedirect(auth, provider); return; }
+      catch (e2) { showLoginError(describeAuthError(e2)); }
+    } else {
+      showLoginError(describeAuthError(err));
+    }
   } finally {
-    document.getElementById("adminPw").value = "";
-    loginBtn.disabled    = false;
-    loginBtn.textContent = "로그인";
+    loginBtn.disabled = false;
   }
 });
 
@@ -180,10 +175,11 @@ loginForm.addEventListener("submit", async (e) => {
 onAuthStateChanged(auth, async (fbUser) => {
   if (!fbUser) { showLogin(); return; }
 
-  // 익명 세션(학생)으로는 관리자 화면에 들어올 수 없다.
+  // HUFS Google 계정이 아니면 관리자 화면에 들어올 수 없다.
   const token = await fbUser.getIdTokenResult();
-  if (token.signInProvider !== "password") {
+  if (token.signInProvider !== "google.com" || !isHufsEmail(fbUser.email)) {
     await signOut(auth);
+    showLogin(`HUFS 계정(@${HUFS_DOMAIN})으로 로그인해주세요.`);
     return;
   }
 
@@ -263,9 +259,10 @@ function renderStudentList(snap) {
     const d  = docSnap.data();
     const li = document.createElement("li");
     li.className = `student-item${docSnap.id === selectedThreadId ? " active" : ""}${d.hasUnread ? " unread" : ""}`;
+    li.dataset.tid = docSnap.id;
     li.innerHTML = `
-      <span class="s-name">${esc(d.studentName)}</span>
-      <span class="s-id">${esc(d.studentId)}</span>
+      <span class="s-name">${esc(nameOf(d))}</span>
+      <span class="s-id">${esc(idOf(d))}</span>
       <span class="s-last">${esc(d.lastMessage || "")}</span>`;
     li.addEventListener("click", () => selectThread(docSnap.id, d));
     list.appendChild(li);
@@ -280,13 +277,14 @@ function selectThread(threadId, data) {
 
   document.getElementById("chatHeader").innerHTML = `
     <div class="chat-header-info">
-      <span class="chat-title">${esc(data.studentName)}</span>
-      <span class="chat-sub">${esc(data.studentId)}</span>
+      <span class="chat-title">${esc(nameOf(data))}</span>
+      <span class="chat-sub">${esc(idOf(data))}</span>
     </div>`;
   document.getElementById("inputArea").style.display = "flex";
 
+  // 이메일은 길어 잘릴 수 있으므로 문서 ID 로 활성 항목을 표시한다.
   document.querySelectorAll(".student-item").forEach(el => {
-    el.classList.toggle("active", el.querySelector(".s-id")?.textContent === data.studentId);
+    el.classList.toggle("active", el.dataset.tid === threadId);
   });
 
   if (unsubMessages) unsubMessages();
@@ -320,7 +318,7 @@ function renderMessages(snap, threadId) {
 
     if (data.role === "student") {
       row.innerHTML = `
-        <div class="msg-avatar">${esc(data.studentName?.[0] || "학")}</div>
+        <div class="msg-avatar">학</div>
         <div class="msg-body">
           <div class="bubble">${esc(data.text)}</div>
           <div class="msg-foot">
@@ -447,6 +445,10 @@ function autoResize(el) {
 function esc(s) {
   return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
 }
+// HUFS 계정 전환 이전에 만들어진 스레드(studentName/studentId)도 알아볼 수 있게 한다.
+function nameOf(d) { return d.name  || d.studentName || "(이름 없음)"; }
+function idOf(d)   { return d.email || d.studentId   || ""; }
+
 function showToast(msg) {
   const toast = document.getElementById("toast");
   toast.textContent = msg;

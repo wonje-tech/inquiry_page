@@ -1,8 +1,3 @@
-# ⚠️ 학생 원본 명단 — 절대 커밋 금지
-scripts/students-raw.csv
-scripts/students-raw.xlsx
-data/students-raw.*
-
 # Firebase
 .firebaserc
 .env

@@ -13,81 +13,125 @@
     <div class="login-header">
       <div class="logo-mark"></div>
       <h1>AI데이터융합학과 상담 시스템</h1>
-      <p>학번과 이름을 입력하여 로그인하세요</p>
+      <p>HUFS 계정으로 로그인하세요</p>
     </div>
 
-    <form id="loginForm" autocomplete="off">
-      <div class="field">
-        <label for="studentId">학번</label>
-        <input type="text" id="studentId" placeholder="예: 20201234" maxlength="12" inputmode="numeric"/>
-      </div>
-      <div class="field">
-        <label for="studentName">이름</label>
-        <input type="text" id="studentName" placeholder="홍길동" maxlength="10"/>
-      </div>
-      <div id="loginError" class="error-msg" hidden></div>
-      <button type="submit" class="btn-login" id="loginBtn">로그인</button>
-    </form>
+    <!-- 로그인 전 -->
+    <div id="signedOut" hidden>
+      <button type="button" class="btn-google" id="googleBtn">
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.6 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.2C12.4 13.6 17.7 9.5 24 9.5z"/>
+          <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.2 5.3-4.6 7l7.2 5.6c4.2-3.9 6.6-9.7 6.6-16.6z"/>
+          <path fill="#FBBC05" d="M10.5 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C.9 16.5 0 20.1 0 24s.9 7.5 2.6 10.8l7.9-6.2z"/>
+          <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.2-5.6c-2 1.4-4.6 2.2-8.7 2.2-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.2C6.5 42.6 14.6 48 24 48z"/>
+        </svg>
+        HUFS 계정으로 로그인
+      </button>
+    </div>
 
-    <p class="login-foot">AI데이터융합학과 재학생만 이용 가능합니다</p>
+    <!-- 로그인 후 -->
+    <div id="signedIn" hidden>
+      <div class="who">
+        <div class="who-avatar" id="whoAvatar"></div>
+        <div class="who-text">
+          <div class="who-name"  id="whoName"></div>
+          <div class="who-email" id="whoEmail"></div>
+        </div>
+      </div>
+      <button type="button" class="btn-login" id="continueBtn">상담 시작하기</button>
+      <button type="button" class="btn-text" id="switchBtn">다른 계정으로 로그인</button>
+    </div>
+
+    <div id="loginError" class="error-msg" hidden></div>
+
+    <p class="login-foot">
+      한국외국어대학교 구성원(@hufs.ac.kr)이면 누구나 이용할 수 있습니다<br/>
+      <a href="admin.html">관리자</a>
+    </p>
   </div>
 </div>
 
 <script type="module">
-import { initializeApp }        from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInAnonymously, signOut }
-                                from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { FIREBASE_CONFIG }      from "./js/config.js";
-import { verifyStudent }        from "./js/auth.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+         getRedirectResult, onAuthStateChanged, signOut }
+                          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { FIREBASE_CONFIG } from "./js/config.js";
+import { HUFS_DOMAIN, isHufsEmail, describeAuthError } from "./js/hufs.js";
 
-// 이 페이지는 학생 전용이다. 관리자 로그인은 admin.html 에서 별도로 처리한다.
+// ============================================================
+//  로그인 = HUFS Google 계정.
+//  아래 도메인 검사는 안내 문구를 위한 것이고, 실제 차단은
+//  firestore.rules 의 isHufs() 가 담당한다. 여기를 우회해도 데이터는 나가지 않는다.
+// ============================================================
+
 const app  = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 
-const form     = document.getElementById("loginForm");
-const errEl    = document.getElementById("loginError");
-const loginBtn = document.getElementById("loginBtn");
+const provider = new GoogleAuthProvider();
+provider.setCustomParameters({ hd: HUFS_DOMAIN, prompt: "select_account" });
 
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const id   = document.getElementById("studentId").value.trim();
-  const name = document.getElementById("studentName").value.trim();
+const signedOutBox = document.getElementById("signedOut");
+const signedInBox  = document.getElementById("signedIn");
+const googleBtn    = document.getElementById("googleBtn");
+const errEl        = document.getElementById("loginError");
 
-  if (!id || !name) {
-    showError("학번과 이름을 모두 입력해주세요.");
+// 팝업이 막힌 환경에서 리디렉션으로 돌아온 경우 처리
+getRedirectResult(auth).catch((err) => showError(describeAuthError(err)));
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { showSignedOut(); return; }
+
+  if (!isHufsEmail(user.email)) {
+    await signOut(auth);
+    showSignedOut();
+    showError(`HUFS 계정(@${HUFS_DOMAIN})으로 로그인해주세요.`);
     return;
   }
 
-  loginBtn.disabled    = true;
-  loginBtn.textContent = "확인 중...";
-  errEl.hidden         = true;
+  const name = user.displayName || user.email.split("@")[0];
+  document.getElementById("whoAvatar").textContent = name.trim().charAt(0) || "H";
+  document.getElementById("whoName").textContent   = name;
+  document.getElementById("whoEmail").textContent  = user.email;
+  signedOutBox.hidden = true;
+  signedInBox.hidden  = false;
+  errEl.hidden        = true;
+});
 
+googleBtn.addEventListener("click", async () => {
+  googleBtn.disabled = true;
+  errEl.hidden       = true;
   try {
-    const result = await verifyStudent(id, name);
-    if (!result.valid) {
-      showError("학번 또는 이름이 올바르지 않습니다.");
-      return;
-    }
-
-    // 같은 브라우저에 관리자 세션이 남아 있으면 정리하고 학생(익명) 세션으로 전환한다.
-    if (auth.currentUser && !auth.currentUser.isAnonymous) {
-      await signOut(auth);
-    }
-    await signInAnonymously(auth);
-
-    // 화면 표시용 정보만 저장한다. 권한 판단에는 쓰이지 않는다.
-    sessionStorage.setItem("user", JSON.stringify({ id, name }));
-    location.href = "chat.html";
+    await signInWithPopup(auth, provider);
   } catch (err) {
-    console.error(err);
-    showError("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    console.error(err.code || err);
+    if (err.code === "auth/popup-blocked") {
+      // 팝업 차단 환경(일부 모바일 인앱 브라우저) 대비
+      try { await signInWithRedirect(auth, provider); return; }
+      catch (e2) { showError(describeAuthError(e2)); }
+    } else {
+      showError(describeAuthError(err));
+    }
   } finally {
-    loginBtn.disabled    = false;
-    loginBtn.textContent = "로그인";
+    googleBtn.disabled = false;
   }
 });
 
+document.getElementById("continueBtn").addEventListener("click", () => {
+  location.href = "chat.html";
+});
+
+document.getElementById("switchBtn").addEventListener("click", async () => {
+  await signOut(auth);
+  showSignedOut();
+});
+
+function showSignedOut() {
+  signedInBox.hidden  = true;
+  signedOutBox.hidden = false;
+}
 function showError(msg) {
+  if (!msg) return;
   errEl.textContent = msg;
   errEl.hidden      = false;
 }

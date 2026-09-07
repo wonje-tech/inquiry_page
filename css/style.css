@@ -90,6 +90,52 @@ html, body { height: 100%; }
 .btn-login:hover:not(:disabled) { background: var(--primary2); }
 .btn-login:disabled { opacity: 0.55; cursor: not-allowed; }
 
+/* Google(HUFS 계정) 로그인 버튼 */
+.btn-google {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 13px 14px;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  font-size: 0.95rem; font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-google:hover:not(:disabled) { background: var(--input-bg); border-color: var(--sub); }
+.btn-google:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-google svg { width: 18px; height: 18px; flex: none; }
+
+/* 이미 로그인된 상태 카드 */
+.who {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 16px;
+}
+.who-avatar {
+  width: 38px; height: 38px; flex: none;
+  border-radius: 50%;
+  background: var(--primary); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+}
+.who-text { min-width: 0; }
+.who-name  { font-weight: 600; font-size: 0.92rem; }
+.who-email { font-size: 0.8rem; color: var(--sub); overflow-wrap: anywhere; }
+.btn-text {
+  display: block; width: 100%;
+  margin-top: 10px; padding: 8px;
+  background: none; border: none;
+  color: var(--sub); font-size: 0.82rem; font-family: inherit;
+  text-decoration: underline; cursor: pointer;
+}
+.btn-text:hover { color: var(--primary); }
+
 .error-msg {
   background: #fef2f2; border: 1px solid #fca5a5;
   color: var(--danger); border-radius: var(--r);
