@@ -37,16 +37,19 @@
 
 <script type="module">
 import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInAnonymously }
+import { getAuth, onAuthStateChanged, signInAnonymously, signOut }
                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, setDoc, addDoc, updateDoc,
          query, orderBy, onSnapshot, serverTimestamp, getDoc }
                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { FIREBASE_CONFIG } from "./js/config.js";
 
-// ── 인증 확인 ──
+// ── 화면 표시용 정보 ──
+// sessionStorage 값은 이름·학번을 화면에 그리는 용도로만 쓴다.
+// 실제 접근 권한은 Firebase 익명 세션의 uid 와 Firestore 보안 규칙이 결정한다.
+// (스레드 문서 ID == 본인 uid 이므로 다른 학생의 대화는 규칙 단계에서 차단된다.)
 const user = JSON.parse(sessionStorage.getItem("user") || "null");
-if (!user || user.isAdmin) { location.href = "index.html"; }
+if (!user || !user.id || !user.name) { location.href = "index.html"; }
 
 const app  = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
@@ -56,27 +59,46 @@ document.getElementById("headerSub").textContent  = `${user.name} (${user.id})`;
 document.getElementById("dateBar").textContent =
   new Date().toLocaleDateString("ko-KR", { year:"numeric", month:"long", day:"numeric", weekday:"short" });
 
-// ── Firebase 로그인 후 채팅 시작 ──
+let started = false;
+
 onAuthStateChanged(auth, async (fbUser) => {
   if (!fbUser) { await signInAnonymously(auth); return; }
-  initChat(fbUser.uid);
+
+  // 같은 브라우저에 관리자(이메일) 세션이 남아 있으면 학생 세션으로 교체한다.
+  if (!fbUser.isAnonymous) { started = false; await signOut(auth); return; }
+
+  if (started) return;
+  started = true;
+  await startChat(fbUser.uid);
 });
 
-function initChat(uid) {
-  const threadRef = doc(db, "chat_threads", user.id);
+async function startChat(uid) {
+  // 스레드 문서 ID = 본인 uid
+  const threadRef = doc(db, "chat_threads", uid);
 
-  // 스레드 없으면 생성
-  getDoc(threadRef).then(snap => {
-    if (!snap.exists()) {
-      setDoc(threadRef, {
-        studentId: user.id, studentName: user.name,
-        uid, lastMessage: "", lastMessageAt: serverTimestamp(), hasUnread: false
-      });
-    }
-  });
+  let snap;
+  try {
+    snap = await getDoc(threadRef);
+  } catch (e) {
+    console.error("스레드 조회 실패:", e);
+    return;
+  }
+
+  if (!snap.exists()) {
+    await setDoc(threadRef, {
+      studentId: user.id, studentName: user.name,
+      uid, lastMessage: "", lastMessageAt: serverTimestamp(), hasUnread: false
+    });
+  } else if (snap.data().studentId !== user.id) {
+    // 공용 PC 등에서 다른 학생이 로그인한 경우 — 새 익명 신원을 발급받아
+    // 이전 사용자의 대화가 노출되지 않도록 한다.
+    started = false;
+    await signOut(auth);
+    return;
+  }
 
   // 메시지 실시간 구독
-  const q = query(collection(db, "chat_threads", user.id, "messages"), orderBy("createdAt", "asc"));
+  const q = query(collection(db, "chat_threads", uid, "messages"), orderBy("createdAt", "asc"));
   onSnapshot(q, snap => renderMessages(snap));
 
   // 전송
@@ -99,7 +121,7 @@ function initChat(uid) {
     input.value = "";
     autoResize(input);
 
-    await addDoc(collection(db, "chat_threads", user.id, "messages"), {
+    await addDoc(collection(db, "chat_threads", uid, "messages"), {
       text, role: "student", createdAt: serverTimestamp(), uid
     });
     await updateDoc(threadRef, {
@@ -158,8 +180,10 @@ function esc(s) {
   return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
 }
 
-document.getElementById("logoutBtn").addEventListener("click", () => {
-  sessionStorage.clear(); location.href = "index.html";
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  sessionStorage.clear();
+  try { await signOut(auth); } catch (e) { console.error(e); }
+  location.href = "index.html";
 });
 </script>
 </body>

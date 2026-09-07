@@ -3,15 +3,43 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex, nofollow"/>
 <title>관리자 대시보드</title>
 <link rel="stylesheet" href="css/style.css"/>
 </head>
-<body class="admin-page">
+<body class="login-page">
 
 <!-- 토스트 알림 -->
 <div class="toast" id="toast"></div>
 
-<div class="admin-wrap">
+<!-- ── 관리자 로그인 ──────────────────────────────── -->
+<div class="login-wrap" id="adminLogin">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="logo-mark"></div>
+      <h1>관리자 로그인</h1>
+      <p>관리자 계정으로 로그인하세요</p>
+    </div>
+
+    <form id="adminLoginForm" autocomplete="off">
+      <div class="field">
+        <label for="adminEmail">이메일</label>
+        <input type="email" id="adminEmail" autocomplete="username" placeholder="admin@example.com"/>
+      </div>
+      <div class="field">
+        <label for="adminPw">비밀번호</label>
+        <input type="password" id="adminPw" autocomplete="current-password"/>
+      </div>
+      <div id="adminLoginError" class="error-msg" hidden></div>
+      <button type="submit" class="btn-login" id="adminLoginBtn">로그인</button>
+    </form>
+
+    <p class="login-foot">학생 상담은 <a href="index.html">상담 시스템</a>에서 이용하세요</p>
+  </div>
+</div>
+
+<!-- ── 관리자 대시보드 ────────────────────────────── -->
+<div class="admin-wrap" id="adminApp" style="display:none">
 
   <!-- 사이드바: 학생 목록 -->
   <aside class="sidebar">
@@ -62,16 +90,21 @@
 
 <script type="module">
 import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInAnonymously }
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc,
          getDoc, setDoc, getDocs, query, orderBy, onSnapshot, serverTimestamp, Timestamp }
                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { FIREBASE_CONFIG } from "./js/config.js";
 
-// ── 관리자 인증 확인 ──
-const user = JSON.parse(sessionStorage.getItem("user") || "null");
-if (!user || !user.isAdmin) { location.href = "index.html"; }
+// ============================================================
+//  관리자 인증
+//  - 이메일/비밀번호 Firebase Auth 계정으로만 로그인한다(익명 로그인 금지).
+//  - 관리자 여부는 Firestore 의 admins/{uid} 문서로 판정하며,
+//    이 문서는 클라이언트에서 만들 수 없다(보안 규칙 write: false).
+//  - 이 화면을 강제로 열더라도 모든 데이터 요청은 보안 규칙에서 다시 검증된다.
+//    즉 sessionStorage 같은 클라이언트 값으로는 권한을 얻을 수 없다.
+// ============================================================
 
 const app  = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
@@ -79,11 +112,101 @@ const db   = getFirestore(app);
 
 const SETTINGS_REF = doc(db, "settings", "chatReset");
 
+const loginBox  = document.getElementById("adminLogin");
+const appBox    = document.getElementById("adminApp");
+const loginForm = document.getElementById("adminLoginForm");
+const loginBtn  = document.getElementById("adminLoginBtn");
+const loginErr  = document.getElementById("adminLoginError");
+
 let selectedThreadId = null;
 let unsubMessages    = null;
+let unsubThreads     = null;
+let adminStarted     = false;
 
+// ── 화면 전환 ──
+function showLogin(msg) {
+  adminStarted = false;
+  if (unsubMessages) { unsubMessages(); unsubMessages = null; }
+  if (unsubThreads)  { unsubThreads();  unsubThreads  = null; }
+  document.body.className = "login-page";
+  appBox.style.display    = "none";
+  loginBox.style.display  = "";
+  if (msg) showLoginError(msg); else loginErr.hidden = true;
+}
+
+function showApp() {
+  document.body.className = "admin-page";
+  loginBox.style.display  = "none";
+  appBox.style.display    = "";
+  loginErr.hidden         = true;
+}
+
+function showLoginError(msg) {
+  loginErr.textContent = msg;
+  loginErr.hidden      = false;
+}
+
+// ── 로그인 처리 ──
+loginForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("adminEmail").value.trim();
+  const pw    = document.getElementById("adminPw").value;
+
+  if (!email || !pw) { showLoginError("이메일과 비밀번호를 모두 입력해주세요."); return; }
+
+  loginBtn.disabled    = true;
+  loginBtn.textContent = "확인 중...";
+  loginErr.hidden      = true;
+
+  try {
+    await signInWithEmailAndPassword(auth, email, pw);
+    // 관리자 여부 확인은 아래 onAuthStateChanged 에서 이어서 처리한다.
+  } catch (err) {
+    console.error(err.code || err);
+    // 계정 존재 여부가 드러나지 않도록 실패 사유는 하나로 묶어 안내한다.
+    showLoginError(
+      err.code === "auth/too-many-requests"
+        ? "시도가 너무 많습니다. 잠시 후 다시 시도해주세요."
+        : "이메일 또는 비밀번호가 올바르지 않습니다."
+    );
+  } finally {
+    document.getElementById("adminPw").value = "";
+    loginBtn.disabled    = false;
+    loginBtn.textContent = "로그인";
+  }
+});
+
+// ── 세션 감시 ──
 onAuthStateChanged(auth, async (fbUser) => {
-  if (!fbUser) { await signInAnonymously(auth); return; }
+  if (!fbUser) { showLogin(); return; }
+
+  // 익명 세션(학생)으로는 관리자 화면에 들어올 수 없다.
+  const token = await fbUser.getIdTokenResult();
+  if (token.signInProvider !== "password") {
+    await signOut(auth);
+    return;
+  }
+
+  // 관리자 명부 확인 — 서버(보안 규칙)가 인정하는 관리자만 통과한다.
+  let adminSnap;
+  try {
+    adminSnap = await getDoc(doc(db, "admins", fbUser.uid));
+  } catch (e) {
+    console.error("관리자 확인 실패:", e);
+    await signOut(auth);
+    showLogin("관리자 권한을 확인하지 못했습니다.");
+    return;
+  }
+
+  if (!adminSnap.exists()) {
+    await signOut(auth);
+    showLogin("이 계정에는 관리자 권한이 없습니다.");
+    return;
+  }
+
+  if (adminStarted) return;
+  adminStarted = true;
+  showApp();
   await loadLastReset();
   initAdmin();
 });
@@ -124,7 +247,7 @@ function updateResetUI(lastResetAtMs) {
 // ──────────────────────────────────────────────
 function initAdmin() {
   const q = query(collection(db, "chat_threads"), orderBy("lastMessageAt", "desc"));
-  onSnapshot(q, snap => renderStudentList(snap));
+  unsubThreads = onSnapshot(q, snap => renderStudentList(snap));
 }
 
 function renderStudentList(snap) {
@@ -331,8 +454,10 @@ function showToast(msg) {
   setTimeout(() => toast.classList.remove("show"), 4000);
 }
 
-document.getElementById("logoutBtn").addEventListener("click", () => {
-  sessionStorage.clear(); location.href = "index.html";
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  sessionStorage.clear();
+  try { await signOut(auth); } catch (e) { console.error(e); }
+  location.href = "index.html";
 });
 </script>
 </body>
